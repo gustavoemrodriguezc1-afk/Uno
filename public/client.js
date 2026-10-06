@@ -1,4 +1,5 @@
-const socket = io({ transports: ['websocket'] });
+// WebSocket con respaldo automático a polling si la red bloquea WebSocket
+const socket = io();
 
 const $ = (id) => document.getElementById(id);
 const COLOR_NAMES = { red: 'Red', yellow: 'Yellow', green: 'Green', blue: 'Blue', wild: 'Wild' };
@@ -7,23 +8,93 @@ let myHand = [];
 let pub = null;          // estado público del servidor
 let myId = null;
 let pendingWild = null;  // carta comodín esperando color
+let connLost = false;    // este dispositivo perdió la conexión
 let flashUntil = 0;
+
+// ---------- Sesión (para reconectar a la misma sala) ----------
+const SESSION_KEY = 'uno_session';
+function saveSession(s) { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
+function loadSession() { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch (e) { return null; } }
+function clearSession() { try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {} }
+
+function getOppId() {
+  return pub ? Object.keys(pub.names).find(id => id !== myId) : null;
+}
+
 function flash(text, ms = 2000) {
   flashUntil = Date.now() + ms;
   $('statusMsg').textContent = text;
   setTimeout(refreshStatus, ms);
 }
+
 function refreshStatus() {
-  if (!pub || pub.winner || Date.now() < flashUntil) return;
+  if (!pub || pub.winner) return;
+  if (connLost) {
+    $('statusMsg').textContent = '📡 Connection lost. Reconnecting...';
+    return;
+  }
+  if (Date.now() < flashUntil) return;
+  const oppId = getOppId();
+  if (oppId && pub.connected && pub.connected[oppId] === false) {
+    $('statusMsg').textContent = `⏳ ${pub.names[oppId]} lost connection. Waiting...`;
+    return;
+  }
   const isMyTurn = pub.turnId === myId;
   $('statusMsg').textContent = isMyTurn ? 'Your turn 👇' : `${pub.names[pub.turnId]}'s turn...`;
 }
+
+function showLobby(msg) {
+  pub = null;
+  myHand = [];
+  myId = null;
+  pendingWild = null;
+  $('colorModal').classList.add('hidden');
+  $('game').classList.add('hidden');
+  $('waiting').classList.add('hidden');
+  $('chatLog').innerHTML = '';
+  $('lobby').classList.remove('hidden');
+  $('lobbyError').textContent = msg || '';
+}
+
+// ---------- Conexión / reconexión ----------
+socket.on('connect', () => {
+  connLost = false;
+  const s = loadSession();
+  if (!s) return;
+  socket.emit('rejoin', { token: s.token, code: s.code }, (res) => {
+    if (!res || !res.ok) {
+      clearSession();
+      showLobby('Your last game is no longer available.');
+      return;
+    }
+    myId = res.id;
+    pendingWild = null;
+    $('colorModal').classList.add('hidden');
+    $('lobby').classList.add('hidden');
+    if (res.started) {
+      $('waiting').classList.add('hidden');
+      $('game').classList.remove('hidden');
+    } else {
+      $('game').classList.add('hidden');
+      $('waiting').classList.remove('hidden');
+      $('showCode').textContent = res.code;
+    }
+    refreshStatus();
+  });
+});
+
+socket.on('disconnect', () => {
+  connLost = true;
+  refreshStatus();
+});
+
 // ---------- Lobby ----------
 $('btnCreate').onclick = () => {
   const name = $('nameInput').value.trim() || 'User';
   socket.emit('createRoom', { name }, (res) => {
     if (!res.ok) return $('lobbyError').textContent = res.error;
-    myId = socket.id;
+    myId = res.id;
+    saveSession({ token: res.token, code: res.code });
     $('lobby').classList.add('hidden');
     $('waiting').classList.remove('hidden');
     $('showCode').textContent = res.code;
@@ -36,10 +107,11 @@ $('btnJoin').onclick = () => {
   if (!code) return $('lobbyError').textContent = 'Enter the code';
   socket.emit('joinRoom', { code, name }, (res) => {
     if (!res.ok) return $('lobbyError').textContent = res.error;
-    myId = socket.id;
+    myId = res.id;
+    saveSession({ token: res.token, code: res.code });
     $('lobby').classList.add('hidden');
     $('waiting').classList.remove('hidden');
-    $('showCode').textContent = code;
+    $('showCode').textContent = res.code;
   });
 };
 
@@ -51,8 +123,7 @@ socket.on('playerJoined', ({ name }) => {
 
 socket.on('gameStart', () => {
   $('btnRematch').classList.add('hidden');
-  $('statusMsg').textContent = 'Dealing cards!';
-  setTimeout(() => $('statusMsg').textContent = '', 1200);
+  flash('Dealing cards!', 1200);
 });
 
 socket.on('hand', (hand) => {
@@ -65,8 +136,12 @@ socket.on('public', (p) => {
   pub = p;
   renderTable();
   const isMyTurn = p.turnId === myId && !p.winner;
-  if (p.winner) $('statusMsg').textContent = '';
-  else refreshStatus();
+  if (p.winner) {
+    $('statusMsg').textContent = p.winnerId === myId ? '🏆 You won the game!' : `🏆 ${p.winner} won the game!`;
+    $('btnRematch').classList.remove('hidden');
+  } else {
+    refreshStatus();
+  }
   // Botón Pass: solo en tu turno, después de robar una carta
   $('btnPass').classList.toggle('hidden', !(isMyTurn && p.drawn));
   // Botón acusar: solo lo ve el rival del que no dijo UNO
@@ -75,6 +150,7 @@ socket.on('public', (p) => {
   updateUnoBtn();
   renderHand();
 });
+
 socket.on('unoCalled', ({ name }) => {
   flash(`🔴 UNO! ${name} has one card left`);
 });
@@ -90,13 +166,10 @@ socket.on('gameOver', ({ winner, winnerId }) => {
 });
 
 socket.on('opponentLeft', ({ name }) => {
+  clearSession();
   $('statusMsg').textContent = `${name} disconnected 😢`;
   $('btnRematch').classList.add('hidden');
-  setTimeout(() => {
-    $('game').classList.add('hidden');
-    $('lobby').classList.remove('hidden');
-    $('lobbyError').textContent = 'The room closed. Create a new game.';
-  }, 2500);
+  setTimeout(() => showLobby('The room closed. Create a new game.'), 2500);
 });
 
 socket.on('chat', ({ name, msg }) => {
@@ -118,7 +191,7 @@ $('btnPass').onclick = () => {
   socket.emit('passTurn');
 };
 
-// Botón UNO
+// Botones UNO
 $('btnUno').onclick = () => socket.emit('sayUno');
 $('btnAccuse').onclick = () => socket.emit('accuseUno');
 
@@ -154,9 +227,10 @@ function renderTable() {
   $('colorLabel').textContent = COLOR_NAMES[pub.color] || '-';
   $('colorLabel').style.color = pub.color === 'yellow' ? '#f1c40f' : pub.color;
 
-  const oppId = Object.keys(pub.names).find(id => id !== myId);
+  const oppId = getOppId();
   if (oppId) {
-    $('oppName').textContent = pub.names[oppId];
+    const away = pub.connected && pub.connected[oppId] === false;
+    $('oppName').textContent = pub.names[oppId] + (away ? ' ⏳' : '');
     $('oppCount').textContent = `🃏 x${pub.counts[oppId]}`;
   }
 }
