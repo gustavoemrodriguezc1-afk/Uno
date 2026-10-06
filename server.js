@@ -60,6 +60,7 @@ function makeRoom(code) {
     drawn: false,  // ya robó carta este turno
     state: 'waiting', // waiting | playing | ended
     winner: null,
+    unoVulnerable: null, // id del jugador con 1 carta que no dijo UNO
   };
 }
 
@@ -104,6 +105,7 @@ function sendState(room) {
     turnId: room.order[room.turn],
     drawn: room.drawn,
     winner: room.winner,
+    unoVulnerable: room.unoVulnerable,
   };
   for (const id of room.order) {
     pub.counts[id] = room.players[id].hand.length;
@@ -136,6 +138,8 @@ function startGame(room) {
   room.color = first.c;
   room.turn = 0;
   room.drawn = false;
+  room.unoVulnerable = null;
+  for (const id of room.order) room.players[id].saidUno = false;
   io.to(room.code).emit('gameStart', { players: room.order.map(id => ({ id, name: room.players[id].name })) });
   sendState(room);
 }
@@ -196,6 +200,10 @@ io.on('connection', (socket) => {
     const card = player.hand[idx];
     if (!canPlay(room, card)) return cb?.({ ok: false, error: 'You can\'t play that card' });
 
+    // UNO: si el rival ya jugó, se cierra la ventana para acusar
+    if (room.unoVulnerable && room.unoVulnerable !== socket.id) room.unoVulnerable = null;
+    player.saidUno = false;
+
     player.hand.splice(idx, 1);
     room.discard.push(card);
 
@@ -212,6 +220,7 @@ io.on('connection', (socket) => {
     if (card.v === 'wild4') { drawCards(room, opponent, 4); again = true; }
 
     if (!checkWin(room, player, socket.id)) {
+      room.unoVulnerable = player.hand.length === 1 ? socket.id : null;
       nextTurn(room, again);
       sendState(room);
     }
@@ -223,6 +232,7 @@ io.on('connection', (socket) => {
     if (!room || room.state !== 'playing') return cb?.({ ok: false });
     if (room.order[room.turn] !== socket.id) return cb?.({ ok: false });
     if (room.drawn) return cb?.({ ok: false, error: 'You can only draw one card per turn' });
+    room.unoVulnerable = null;
     const player = room.players[socket.id];
     drawCards(room, player, 1);
     room.drawn = true;
@@ -245,8 +255,25 @@ io.on('connection', (socket) => {
     if (!room) return;
     const p = room.players[socket.id];
     if (p && p.hand.length === 1) {
+      p.saidUno = true;
+      if (room.unoVulnerable === socket.id) room.unoVulnerable = null;
       io.to(myRoom).emit('unoCalled', { name: p.name });
+      sendState(room);
     }
+  });
+
+  socket.on('accuseUno', (cb) => {
+    const room = rooms.get(myRoom);
+    if (!room || room.state !== 'playing') return cb?.({ ok: false });
+    const targetId = room.unoVulnerable;
+    if (!targetId || targetId === socket.id) return cb?.({ ok: false });
+    const target = room.players[targetId];
+    room.unoVulnerable = null;
+    if (!target || target.hand.length !== 1 || target.saidUno) return cb?.({ ok: false });
+    drawCards(room, target, 2);
+    io.to(room.code).emit('unoPenalty', { name: target.name });
+    sendState(room);
+    cb?.({ ok: true });
   });
 
   socket.on('chat', (msg) => {

@@ -7,7 +7,17 @@ let myHand = [];
 let pub = null;          // estado público del servidor
 let myId = null;
 let pendingWild = null;  // carta comodín esperando color
-
+let flashUntil = 0;
+function flash(text, ms = 2000) {
+  flashUntil = Date.now() + ms;
+  $('statusMsg').textContent = text;
+  setTimeout(refreshStatus, ms);
+}
+function refreshStatus() {
+  if (!pub || pub.winner || Date.now() < flashUntil) return;
+  const isMyTurn = pub.turnId === myId;
+  $('statusMsg').textContent = isMyTurn ? 'Your turn 👇' : `${pub.names[pub.turnId]}'s turn...`;
+}
 // ---------- Lobby ----------
 $('btnCreate').onclick = () => {
   const name = $('nameInput').value.trim() || 'User';
@@ -55,17 +65,22 @@ socket.on('public', (p) => {
   pub = p;
   renderTable();
   const isMyTurn = p.turnId === myId && !p.winner;
-  $('statusMsg').textContent = p.winner
-    ? ''
-    : isMyTurn ? 'Your turn 👇' : `${p.names[p.turnId]}'s turn...`;
+  if (p.winner) $('statusMsg').textContent = '';
+  else refreshStatus();
   // Botón Pass: solo en tu turno, después de robar una carta
   $('btnPass').classList.toggle('hidden', !(isMyTurn && p.drawn));
+  // Botón acusar: solo lo ve el rival del que no dijo UNO
+  $('btnAccuse').classList.toggle('hidden',
+    !(p.unoVulnerable && p.unoVulnerable !== myId && !p.winner));
+  updateUnoBtn();
   renderHand();
 });
-
 socket.on('unoCalled', ({ name }) => {
-  $('statusMsg').textContent = `🔴 UNO! ${name} has one card left`;
-  setTimeout(() => $('statusMsg').textContent = '', 2000);
+  flash(`🔴 UNO! ${name} has one card left`);
+});
+
+socket.on('unoPenalty', ({ name }) => {
+  flash(`⚠️ ${name} didn't say UNO! +2 cards`, 2500);
 });
 
 socket.on('gameOver', ({ winner, winnerId }) => {
@@ -105,6 +120,7 @@ $('btnPass').onclick = () => {
 
 // Botón UNO
 $('btnUno').onclick = () => socket.emit('sayUno');
+$('btnAccuse').onclick = () => socket.emit('accuseUno');
 
 // Chat
 function sendChat() {
@@ -183,7 +199,8 @@ function renderHand() {
 }
 
 function updateUnoBtn() {
-  $('btnUno').classList.toggle('hidden', myHand.length !== 1);
+  const show = myHand.length === 1 && pub && pub.unoVulnerable === myId;
+  $('btnUno').classList.toggle('hidden', !show);
 }
 
 // Selector de color

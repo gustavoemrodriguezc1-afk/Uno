@@ -2,6 +2,13 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+.btn.accuse {
+  background: #e17055;
+  font-weight: 800;
+  max-width: 240px;
+  animation: pulse 1s infinite;
+}
+
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: linear-gradient(160deg, #0b1d12 0%, #123524 55%, #1a4a2e 100%);
