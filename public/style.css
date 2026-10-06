@@ -156,7 +156,7 @@ input:focus { border-color: #7bd88f; }
   transform: rotate(-20deg);
 }
 .ucard span { position: relative; z-index: 1; color: inherit; }
-.ucard > span:not(.corner) { color: #1a1a2e; }
+.ucard > span:not(.corner) { color: #1a1a2e !important; }
 .ucard .corner {
   position: absolute;
   font-size: 0.7rem;
