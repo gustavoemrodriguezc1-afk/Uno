@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>UNO 🃏</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Lobby -->
+  <div id="lobby" class="screen">
+    <div class="card">
+      <h1>🃏 UNO</h1>
+      <p class="subtitle">El clásico, pero online</p>
+      <input id="nameInput" maxlength="14" placeholder="Your name" />
+      <div class="row">
+        <button id="btnCreate" class="btn primary">Create game</button>
+      </div>
+      <div class="divider">or join with a code</div>
+      <div class="row">
+        <input id="codeInput" maxlength="4" placeholder="CODE" />
+        <button id="btnJoin" class="btn">Join</button>
+      </div>
+      <p id="lobbyError" class="error"></p>
+    </div>
+  </div>
+
+  <!-- Esperando -->
+  <div id="waiting" class="screen hidden">
+    <div class="card">
+      <div class="spinner"></div>
+      <h2>Waiting for player...</h2>
+      <p>Share the code:</p>
+      <div id="showCode" class="big-code"></div>
+    </div>
+  </div>
+
+  <!-- Juego -->
+  <div id="game" class="hidden">
+    <div id="topbar">
+      <span id="oppName">...</span>
+      <span id="oppCount">🃏 x7</span>
+    </div>
+    <div id="table">
+      <div id="deckPile" class="pile" title="Draw a card">
+        <div class="card-back">UNO</div>
+        <span>Draw</span>
+      </div>
+      <div class="pile">
+        <div id="topCard" class="ucard"></div>
+        <span>Color: <b id="colorLabel">-</b></span>
+      </div>
+    </div>
+    <div id="statusMsg"></div>
+    <button id="btnPass" class="btn hidden">Pass</button>
+    <button id="btnUno" class="btn uno hidden">UNO!</button>
+    <div id="myHand"></div>
+    <button id="btnRematch" class="btn primary hidden">🔁 Rematch</button>
+
+    <div id="chatBox">
+      <div id="chatLog"></div>
+      <div class="row">
+        <input id="chatInput" maxlength="140" placeholder="Message..." />
+        <button id="btnChat" class="btn small">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selector de color -->
+  <div id="colorModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Choose a color</h3>
+      <div class="color-row">
+        <button class="color-btn red" data-color="red"></button>
+        <button class="color-btn yellow" data-color="yellow"></button>
+        <button class="color-btn green" data-color="green"></button>
+        <button class="color-btn blue" data-color="blue"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
