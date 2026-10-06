@@ -1,3 +1,5 @@
+:root { color-scheme: only light; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -152,7 +154,7 @@ input:focus { border-color: #7bd88f; }
   position: absolute;
   inset: 8px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.9);
+  background: #fffbea;   
   transform: rotate(-20deg);
 }
 .ucard span { position: relative; z-index: 1; color: inherit; }

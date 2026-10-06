@@ -8,7 +8,14 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
-app.use(express.static(path.join(__dirname, 'public')));
+// No cachear HTML/CSS/JS: todos los dispositivos siempre reciben la versión nueva
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (/\.(html|css|js)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+}));
 
 const COLORS = ['red', 'yellow', 'green', 'blue'];
 
