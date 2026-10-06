@@ -381,7 +381,8 @@ io.on('connection', (socket) => {
     if (room.order.length === 2) startGame(room);
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
+    console.log(`desconexión: ${reason} (sala ${myRoom})`);
     const { room, player } = ctx();
     if (!room || !player) return;
     // Si el jugador ya volvió con otro socket, ignoramos este
